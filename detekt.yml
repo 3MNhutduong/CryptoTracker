@@ -1,0 +1,160 @@
+# Cấu hình Detekt chuẩn Senior
+# Mục tiêu: Clean Code, Low Coupling, High Cohesion
+# Dùng cho các branch: master, develop, release
+
+build:
+  maxIssues: 0 # Không chấp nhận bất kỳ lỗi nào (Zero Tolerance Policy)
+  weights:
+    # Ưu tiên sửa lỗi phức tạp (Architecture) hơn lỗi style (Format)
+    complexity: 2
+    LongParameterList: 1
+    style: 1
+    comments: 1
+
+config:
+  validation: true # Kiểm tra file config này có hợp lệ không
+  warningsAsErrors: false # Coi warning là lỗi build luôn
+  checkExhaustiveness: false
+
+processors:
+  active: true
+  exclude:
+    # Những processor này thường thống kê thừa thãi, tắt đi cho nhẹ
+    - 'FunctionCountProcessor'
+    - 'PropertyCountProcessor'
+    - 'ClassCountProcessor'
+    - 'PackageCountProcessor'
+    - 'KtFileCountProcessor'
+
+console-reports:
+  active: true
+  exclude:
+    - 'ProjectStatisticsReport'
+    - 'HtmlOutputReport' # Chúng ta xem log trên CI/CD console là chính
+
+# ---------------------------------------------------------------------
+# 1. COMPLEXITY (ĐỘ PHỨC TẠP) - QUAN TRỌNG NHẤT
+# Senior Dev không viết hàm dài, không viết class khổng lồ.
+# ---------------------------------------------------------------------
+complexity:
+  active: true
+
+  # Hàm có quá nhiều rẽ nhánh (if/else/when).
+  # Nếu > 15, chứng tỏ hàm làm quá nhiều việc -> Cần tách hàm.
+  CyclomaticComplexMethod:
+    threshold: 15
+
+  # Class quá dài (God Object). Nếu > 600 dòng -> Cần tách Class.
+  LargeClass:
+    threshold: 600
+
+  # Hàm quá dài. Nếu > 60 dòng -> Khó đọc -> Cần tách hàm.
+  LongMethod:
+    threshold: 60
+
+  # Hàm nhận quá nhiều tham số. > 6 tham số -> Nên gom vào 1 Data Class/UI State.
+  LongParameterList:
+    threshold: 6
+    ignoreDefaultParameters: true # Bỏ qua nếu có giá trị mặc định (thường gặp trong Compose)
+
+  # Quá nhiều hàm trong 1 class. Vi phạm Single Responsibility Principle.
+  TooManyFunctions:
+    thresholdInFiles: 30
+    thresholdInClasses: 20
+
+# ---------------------------------------------------------------------
+# 2. NAMING (ĐẶT TÊN)
+# Code phải đọc như văn xuôi. Đặt tên sai gây hiểu nhầm.
+# ---------------------------------------------------------------------
+naming:
+  active: true
+
+  # Class phải viết hoa chữ cái đầu (PascalCase)
+  ClassNaming:
+    classPattern: '[A-Z][a-zA-Z0-9]*'
+
+  # Hàm phải viết thường chữ cái đầu (camelCase)
+  FunctionNaming:
+    functionPattern: '[a-z][a-zA-Z0-9]*'
+    excludeClassPattern: 'Test$' # Bỏ qua cho các class Test
+    ignoreOverridden: true # Bỏ qua các hàm override (do tuân theo thư viện)
+
+  # Biến constant phải viết hoa toàn bộ (UPPER_SNAKE_CASE) hoặc camelCase
+  TopLevelPropertyNaming:
+    constantPattern: '[A-Z][A-Z0-9_]*'
+
+# ---------------------------------------------------------------------
+# 3. STYLE (PHONG CÁCH CODE)
+# Đảm bảo code của cả team nhìn như được viết bởi 1 người.
+# DIỆT CODE THỪA (DEAD CODE / UNUSED CODE)
+# ---------------------------------------------------------------------
+style:
+  active: true
+
+  # Không dùng Magic Number (số cứng không rõ nghĩa). VD: delay(5000) -> delay(SPLASH_TIMEOUT)
+  MagicNumber:
+    active: true
+    ignoreNumbers: ['-1', '0', '1', '2', '100', '1000'] # Những số cơ bản được phép dùng
+    ignorePropertyDeclaration: true
+    ignoreAnnotation: true # Cho phép dùng trong @Preview(width = 300)
+
+  # Một hàm không nên return quá nhiều nơi -> Khó debug luồng chạy.
+  ReturnCount:
+    max: 3
+    excludeGuardClauses: true # Cho phép return sớm để check lỗi (Guard Clause)
+
+  # Bắt buộc xóa các biến private không dùng -> Clean Code
+  UnusedPrivateMember:
+    active: true
+
+  # Class private không dùng -> Xóa
+  UnusedPrivateClass:
+    active: true
+
+  # Hàm private không dùng -> Xóa
+  UnusedPrivateFunction:
+    active: true
+
+  # Property (biến toàn cục) private không dùng -> Xóa
+  UnusedPrivateProperty:
+    active: true
+
+  # Giá trị biến được gán nhưng không dùng (VD: val x = 5; sau đó x không được đọc)
+  UnusedValue:
+    active: true
+
+  # Không cho phép dùng Wildcard Import (import java.util.*) -> Gây xung đột và nặng build
+  WildcardImport:
+    active: true
+
+  # Code không bao giờ chạy tới được (VD: code sau lệnh return/throw)
+  UnreachableCode:
+    active: true
+
+# ---------------------------------------------------------------------
+# 4. COROUTINES (ĐẶC THÙ ANDROID/KOTLIN)
+# Tránh các lỗi phổ biến khi dùng Coroutines
+# ---------------------------------------------------------------------
+coroutines:
+  active: true
+  # Tránh GlobalScope (dễ gây memory leak vì không gắn với Lifecycle)
+  GlobalCoroutineUsage:
+    active: true
+  # Suspend fun nên được gọi trong coroutine scope hoặc suspend fun khác
+  RedundantSuspendModifier:
+    active: true
+
+# ---------------------------------------------------------------------
+# 5. COMMENTS
+# Senior quan niệm: "Code giải thích cho chính nó". Comment chỉ dùng khi cần thiết.
+# ---------------------------------------------------------------------
+comments:
+  active: true
+  # Không bắt buộc viết JavaDoc cho mọi hàm (Rất phiền phức và vô dụng với Internal code)
+  UndocumentedPublicClass:
+    active: false
+  UndocumentedPublicFunction:
+    active: false
+  # Cấm comment kiểu "// Code này đã bị comment lại" (Zombie Code) -> Xóa luôn đi
+  CommentedOutCode:
+    active: true

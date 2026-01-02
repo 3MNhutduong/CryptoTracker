@@ -1,0 +1,174 @@
+# ==============================================================================
+# TÊN WORKFLOW: Android CI/CD Pipeline (Gitflow Support)
+# ==============================================================================
+name: Android CI/CD Pipeline
+
+# ------------------------------------------------------------------------------
+# TRIGGERS (CÒ SÚNG): Định nghĩa khi nào Pipeline này chạy
+# ------------------------------------------------------------------------------
+on:
+  # 1. Khi có hành động PUSH code lên bất kỳ nhánh nào
+  push:
+    # Dùng ký tự đại diện '**' để bắt TẤT CẢ các nhánh.
+    # -> Giải quyết yêu cầu: "Mọi branch khi push lên đều check".
+    branches: [ '**' ]
+
+  # 2. Khi tạo Pull Request vào các nhánh quan trọng
+  pull_request:
+    branches: [ "master", "develop", "release/**" ]
+
+# ------------------------------------------------------------------------------
+# JOBS: Các công việc cụ thể
+# ------------------------------------------------------------------------------
+jobs:
+
+  # JOB 1: KIỂM TRA CHẤT LƯỢNG CODE (LINT & TEST)
+  # Job này chạy cho MỌI TRƯỜNG HỢP. Code bẩn hoặc lỗi logic là chặn ngay.
+  lint-and-test:
+    name: Lint & Unit Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Setup Java 17 (Yêu cầu bắt buộc cho Android SDK 35)
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      # Tối ưu tốc độ build bằng cách cache lại thư viện Gradle
+      - name: Setup Gradle Cache
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Grant Execute Permission
+        run: chmod +x gradlew
+
+      # Chạy Static Analysis (Ktlint/Detekt) và Lint của Android
+      - name: Run Code Analysis
+        run: |
+          # 1. Xác định tên nhánh hiện tại
+          CURRENT_BRANCH="${{ github.ref_name }}"
+          echo "[LOG] Checking branch: $CURRENT_BRANCH"
+          
+          # 2. Logic chọn file config (Bash Script đơn giản)
+          if [[ "$CURRENT_BRANCH" == "main" || "$CURRENT_BRANCH" == "develop" || "$CURRENT_BRANCH" == release/* ]]; then
+             CONFIG_FILE="detekt.yml"
+             echo "[LOG] -> Apply STRICT rules (No Zombie Code)"
+          else
+             CONFIG_FILE="detekt-loose.yml"
+             echo "[LOG] -> Apply LOOSE rules (Allow Zombie Code)"
+          fi
+          
+          # 3. Chạy Gradle với tham số -PdetektConfig
+          ./gradlew detekt -PdetektConfig=$CONFIG_FILE lintDebug
+
+      # Chạy Unit Test (Logic UseCase, ViewModel...)
+      - name: Run Unit Tests
+        run: ./gradlew testDebugUnitTest
+
+  # ------------------------------------------------------------------------------------------
+  # JOB 2: BUILD BẢN DEBUG
+  # Chạy cho các nhánh Feature/Develop để đảm bảo code build được thành App
+  # ------------------------------------------------------------------------------------------
+  build-debug:
+    name: Build Debug APK
+    # Chỉ chạy khi Job 1 (Lint & Test) đã thành công
+    needs: lint-and-test
+    runs-on: ubuntu-latest
+
+    # ĐIỀU KIỆN CHẠY (Logic tối ưu):
+    # - KHÔNG chạy trên nhánh 'master' (Vì master cần bản Release)
+    # - KHÔNG chạy trên nhánh 'release/...' (Vì release cần bản Signed Release)
+    # -> Còn lại (feature, develop, bugfix) sẽ chạy job này.
+    if: github.ref != 'refs/heads/master' && !startsWith(github.ref, 'refs/heads/release/')
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+      - uses: gradle/actions/setup-gradle@v3
+
+      - name: Build Debug APK
+        run: ./gradlew assembleDebug
+
+      # Lưu file APK lại để tải về test nếu cần
+      - name: Upload Debug Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug-${{ github.sha }}
+          path: app/build/outputs/apk/debug/*.apk
+
+  # ------------------------------------------------------------------------------------------
+  # JOB 3: BUILD BẢN RELEASE & KÝ SỐ (SIGNING)
+  # Đây là job quan trọng nhất, tạo ra sản phẩm cuối cùng.
+  # ------------------------------------------------------------------------------------------
+  build-release:
+    name: Build Signed Release APK
+    needs: lint-and-test
+    runs-on: ubuntu-latest
+
+    # Job này cần quyền ghi (write) để tạo Release trên GitHub
+    permissions:
+      contents: write
+
+    # ĐIỀU KIỆN CHẠY (Git Flow Logic):
+    # 1. Merge vào Master (Production Branch)
+    # 2. Push vào nhánh Release (Release Candidate Branch)
+    # 3. Push Tag bắt đầu bằng 'v' (Trigger sự kiện Release chính thức)
+    if: github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/heads/release/') || startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+      - uses: gradle/actions/setup-gradle@v3
+
+      # --- BƯỚC 1: GIẢI MÃ KEYSTORE (Bảo mật) ---
+      - name: Decode Keystore
+        env:
+          ENCODED_STRING: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          # Chuyển chuỗi Base64 từ Secrets thành file .jks thực tế
+          echo $ENCODED_STRING | base64 -d > my-release-key.jks
+
+      # --- BƯỚC 2: BUILD & SIGN APK ---
+      - name: Build & Sign Release APK
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          # Chạy lệnh build Release, inject thông tin signing vào
+          ./gradlew assembleRelease \
+            -Pandroid.injected.signing.store.file=$(pwd)/my-release-key.jks \
+            -Pandroid.injected.signing.store.password=$KEYSTORE_PASSWORD \
+            -Pandroid.injected.signing.key.alias=$KEY_ALIAS \
+            -Pandroid.injected.signing.key.password=$KEY_PASSWORD
+
+      # --- BƯỚC 3: LƯU TRỮ ARTIFACT (Cho mọi trường hợp) ---
+      # Bước này giúp bạn tải file APK về từ GitHub Action tab (dù chưa Release)
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release-signed
+          path: app/build/outputs/apk/release/*.apk
+
+      # --- BƯỚC 4: CD - DEPLOYMENT (Chỉ chạy khi có TAG) ---
+      # Đây là bước "Continuous Deployment" thực sự
+      - name: Create GitHub Release
+        # Dùng thư viện action-gh-release nổi tiếng
+        uses: softprops/action-gh-release@v1
+        # Điều kiện: Chỉ chạy bước này nếu trigger là TAG (vd: v1.0.0)
+        if: startsWith(github.ref, 'refs/tags/v')
+        with:
+          # Tự động lấy file APK vừa build ở trên để đính kèm
+          files: app/build/outputs/apk/release/*.apk
+          # Tự động sinh Release Note dựa trên các commit
+          generate_release_notes: true
+          # Đánh dấu là Pre-release nếu tag có chữ 'rc' (Release Candidate)
+          prerelease: ${{ contains(github.ref, 'rc') }}
