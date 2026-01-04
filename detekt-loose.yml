@@ -1,5 +1,5 @@
-# Cấu hình Detekt chuẩn Senior
-# Mục tiêu: Clean Code, Low Coupling, High Cohesion
+# Cấu hình Detekt LOOSE (Compatible with Detekt 1.23.x)
+# Mục tiêu: Cho phép code "sạch tạm thời" khi đang phát triển
 # Dùng ngoại trừ các branch: master, develop, release
 
 build:
@@ -53,8 +53,10 @@ complexity:
     threshold: 60
 
   # Hàm nhận quá nhiều tham số. > 6 tham số -> Nên gom vào 1 Data Class/UI State.
+  # Updated for Detekt 1.23+: use functionThreshold + constructorThreshold
   LongParameterList:
-    threshold: 6
+    functionThreshold: 6
+    constructorThreshold: 8
     ignoreDefaultParameters: true # Bỏ qua nếu có giá trị mặc định (thường gặp trong Compose)
 
   # Quá nhiều hàm trong 1 class. Vi phạm Single Responsibility Principle.
@@ -73,11 +75,13 @@ naming:
   ClassNaming:
     classPattern: '[A-Z][a-zA-Z0-9]*'
 
-  # Hàm phải viết thường chữ cái đầu (camelCase)
+  # Hàm phải viết thường chữ cái đầu (camelCase) 
+  # Hoặc viết hoa cho @Composable (PascalCase)
+  # Note: ignoreOverridden is now default behavior in Detekt 1.23+
   FunctionNaming:
-    functionPattern: '[a-z][a-zA-Z0-9]*'
+    functionPattern: '([a-z][a-zA-Z0-9]*)|([A-Z][a-zA-Z0-9]*)' # Allow both camelCase and PascalCase for Compose
     excludeClassPattern: 'Test$' # Bỏ qua cho các class Test
-    ignoreOverridden: true # Bỏ qua các hàm override (do tuân theo thư viện)
+    ignoreAnnotated: ['Composable'] # Ignore @Composable functions
 
   # Biến constant phải viết hoa toàn bộ (UPPER_SNAKE_CASE) hoặc camelCase
   TopLevelPropertyNaming:
@@ -102,7 +106,9 @@ style:
     max: 3
     excludeGuardClauses: true # Cho phép return sớm để check lỗi (Guard Clause)
 
-  # Bắt buộc xóa các biến private không dùng -> Clean Code
+  # Bắt buộc xóa các biến/hàm/class private không dùng -> Clean Code
+  # Note: UnusedPrivateFunction, UnusedPrivateProperty, UnusedPrivateClass 
+  # are all merged into UnusedPrivateMember in Detekt 1.23+
   UnusedPrivateMember:
     active: true
 
@@ -111,7 +117,19 @@ style:
     active: true
 
 # ---------------------------------------------------------------------
-# 4. COROUTINES (ĐẶC THÙ ANDROID/KOTLIN)
+# 4. POTENTIAL-BUGS (LỖI TIỀM ẨN)
+# Các rule phát hiện code có thể gây bug
+# ---------------------------------------------------------------------
+potential-bugs:
+  active: true
+
+  # Code không bao giờ chạy tới được (VD: code sau lệnh return/throw)
+  # Note: UnreachableCode moved from style to potential-bugs in Detekt 1.23+
+  UnreachableCode:
+    active: true
+
+# ---------------------------------------------------------------------
+# 5. COROUTINES (ĐẶC THÙ ANDROID/KOTLIN)
 # Tránh các lỗi phổ biến khi dùng Coroutines
 # ---------------------------------------------------------------------
 coroutines:
@@ -124,7 +142,7 @@ coroutines:
     active: true
 
 # ---------------------------------------------------------------------
-# 5. COMMENTS
+# 6. COMMENTS
 # Senior quan niệm: "Code giải thích cho chính nó". Comment chỉ dùng khi cần thiết.
 # ---------------------------------------------------------------------
 comments:
@@ -133,7 +151,4 @@ comments:
   UndocumentedPublicClass:
     active: false
   UndocumentedPublicFunction:
-    active: false
-  # Cấm comment kiểu "// Code này đã bị comment lại" (Zombie Code) -> Xóa luôn đi
-  CommentedOutCode:
     active: false
