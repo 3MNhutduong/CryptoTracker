@@ -12,14 +12,14 @@ plugins {
 android {
     namespace = "com.example.cryptotracker"
     // compileSdk: Version Android SDK dùng để biên dịch code (nên để mới nhất, VD: 36)
-    compileSdk = 36
+    compileSdk = Versions.compileSdk
 
     defaultConfig {
         applicationId = "com.example.cryptotracker" // ID ứng dụng trên Store
-        minSdk = 24
-        targetSdk = 36 // App tối ưu tốt nhất cho Android 16
-        versionCode = 1
-        versionName = "1.0"
+        minSdk = Versions.minSdk
+        targetSdk = Versions.targetSdk // App tối ưu tốt nhất cho Android 16
+        versionCode = Versions.versionCode
+        versionName = Versions.versionName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

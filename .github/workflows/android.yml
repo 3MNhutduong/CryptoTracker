@@ -152,6 +152,7 @@ jobs:
 
       # --- BƯỚC 3: LƯU TRỮ ARTIFACT (Cho mọi trường hợp) ---
       # Bước này giúp bạn tải file APK về từ GitHub Action tab (dù chưa Release)
+      # An artifact is just a way to save important files from your CI/CD pipeline so you can access them later
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:

@@ -21,3 +21,9 @@ dependencyResolutionManagement {
 
 rootProject.name = "CryptoTracker"
 include(":app")
+include(":core")
+include(":data")
+include(":domain")
+include(":features")
+
+
